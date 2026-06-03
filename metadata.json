@@ -1,0 +1,8 @@
+{
+  "name": "Remix: HTML to App Builder",
+  "description": "Turn HTML code into fully customizable content apps with simple designs and complete content management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
