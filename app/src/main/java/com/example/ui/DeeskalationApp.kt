@@ -958,7 +958,7 @@ fun PhasenScreen(
         }
 
         // Real-time CMS Dynamic Custom Sections for this active phase
-        val phaseCmsItems = cmsSections.filter { it.phaseId == selectedPhaseId }
+        val phaseCmsItems = cmsSections.filter { (it.phaseId as? String) == selectedPhaseId }
         if (phaseCmsItems.isNotEmpty()) {
             item {
                 Spacer(modifier = Modifier.height(12.dp))
@@ -5725,11 +5725,27 @@ fun CmsSectionCard(
     onDelete: () -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
+
+    // Safely extract all values to protect against runtime NullPointerExceptions due to DB/Room null issues
+    val safeTitle = (section.title as? String) ?: ""
+    val safeDescription = (section.description as? String) ?: ""
+    val safeContentText = (section.contentText as? String) ?: ""
+    val safeImageUrl = (section.imageUrl as? String) ?: ""
+    val safeAccentColorHex = (section.accentColorHex as? String) ?: "#1D4ED8"
+    val safePhaseId = (section.phaseId as? String) ?: "ALL"
+    val safeCreatedAt = try {
+        (section.createdAt as? Any) as? Long
+            ?: (section.createdAt as? Number)?.toLong()
+            ?: System.currentTimeMillis()
+    } catch (e: Exception) {
+        System.currentTimeMillis()
+    }
+
     val accentColor = try {
         if (AppCustomizer.applyGlobally) {
             Color(android.graphics.Color.parseColor(AppCustomizer.primaryColorHex))
         } else {
-            Color(android.graphics.Color.parseColor(section.accentColorHex))
+            Color(android.graphics.Color.parseColor(safeAccentColorHex))
         }
     } catch (e: Exception) {
         MaterialTheme.colorScheme.primary
@@ -5785,12 +5801,14 @@ fun CmsSectionCard(
         TextAlign.Left
     }
 
+    val cardId = try { section.id } catch(e: Exception) { 0 }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize()
             .clickable { if (!isAdminView) expanded = !expanded }
-            .testTag("cms_section_card_${section.id}"),
+            .testTag("cms_section_card_${cardId}"),
         colors = CardDefaults.cardColors(containerColor = cardBgColor),
         shape = cardShape,
         elevation = CardDefaults.cardElevation(defaultElevation = cardShadowElevation),
@@ -5811,7 +5829,7 @@ fun CmsSectionCard(
                         ) {}
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = section.title,
+                            text = safeTitle,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -5819,7 +5837,7 @@ fun CmsSectionCard(
                         )
                     }
                     Text(
-                        text = section.description,
+                        text = safeDescription,
                         fontSize = 12.sp,
                         fontStyle = FontStyle.Italic,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
@@ -5832,7 +5850,7 @@ fun CmsSectionCard(
                     Row {
                         IconButton(
                             onClick = onEdit,
-                            modifier = Modifier.testTag("edit_cms_btn_${section.id}")
+                            modifier = Modifier.testTag("edit_cms_btn_${cardId}")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Edit,
@@ -5842,7 +5860,7 @@ fun CmsSectionCard(
                         }
                         IconButton(
                             onClick = onDelete,
-                            modifier = Modifier.testTag("delete_cms_btn_${section.id}")
+                            modifier = Modifier.testTag("delete_cms_btn_${cardId}")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
@@ -5860,11 +5878,11 @@ fun CmsSectionCard(
                 }
             }
 
-            if (section.imageUrl.isNotEmpty()) {
+            if (safeImageUrl.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(activeSpacing.dp))
                 coil.compose.AsyncImage(
-                    model = section.imageUrl,
-                    contentDescription = section.title,
+                    model = safeImageUrl,
+                    contentDescription = safeTitle,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(160.dp)
@@ -5879,7 +5897,7 @@ fun CmsSectionCard(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
                 Spacer(modifier = Modifier.height(activeSpacing.dp))
                 Text(
-                    text = section.contentText,
+                    text = safeContentText,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -5898,14 +5916,14 @@ fun CmsSectionCard(
                         onClick = {},
                         label = {
                             Text(
-                                text = "Kanal: " + if (section.phaseId == "ALL") "Allgemeines Wissen" else "Phase ${section.phaseId}",
+                                text = "Kanal: " + if (safePhaseId == "ALL") "Allgemeines Wissen" else "Phase ${safePhaseId}",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
                     )
                     Text(
-                        text = "Aktualisiert: " + SimpleDateFormat("dd.MM, HH:mm", Locale.GERMAN).format(Date(section.createdAt)),
+                        text = "Aktualisiert: " + SimpleDateFormat("dd.MM, HH:mm", Locale.GERMAN).format(Date(safeCreatedAt)),
                         fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     )
@@ -5915,9 +5933,6 @@ fun CmsSectionCard(
     }
 }
 
-// ══════════════════════════════════════════════════════
-// 6. CMS COMPONENT: CMS ADMIN VIEW
-// ══════════════════════════════════════════════════════
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AdminCmsScreen(
@@ -6024,6 +6039,26 @@ fun AdminCmsScreen(
                         modifier = Modifier.fillMaxWidth().testTag("cms_form_title"),
                         singleLine = true
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (titleInput.isEmpty()) "" 
+                                   else if (titleInput.length <= 45) "✓ Optimale Länge" 
+                                   else "⚠️ Sehr lang (wird evtl. gekürzt)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (titleInput.length <= 45) Color(0xFF16A34A) else Color(0xFFD97706)
+                        )
+                        Text(
+                            text = "${titleInput.length} / 45",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
 
                     OutlinedTextField(
@@ -6033,6 +6068,26 @@ fun AdminCmsScreen(
                         modifier = Modifier.fillMaxWidth().testTag("cms_form_desc"),
                         singleLine = true
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (descInput.isEmpty()) "" 
+                                   else if (descInput.length <= 80) "✓ Optimaler Subtitel" 
+                                   else "⚠️ Sehr lang",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (descInput.length <= 80) Color(0xFF16A34A) else Color(0xFFD97706)
+                        )
+                        Text(
+                            text = "${descInput.length} / 80",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
 
                     OutlinedTextField(
@@ -6042,7 +6097,53 @@ fun AdminCmsScreen(
                         modifier = Modifier.fillMaxWidth().testTag("cms_form_content"),
                         minLines = 3
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val wordCount = contentInput.split("\\s+".toRegex()).filter { it.isNotBlank() }.size
+                        Text(
+                            text = "$wordCount Wörter | ${contentInput.length} Zeichen",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Text formatting assistant toolbar
+                    Text(
+                        text = "⌨️ Text-Formatierhilfen:",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            "• Aufzählung" to "\n• ",
+                            "❗ Wichtig" to "\n❗ Wichtig: ",
+                            "💡 Praxis-Tipp" to "\n💡 Praxis-Tipp: ",
+                            "Löschen" to ""
+                        ).forEach { (label, insertion) ->
+                            AssistChip(
+                                onClick = {
+                                    if (label == "Löschen") {
+                                        contentInput = ""
+                                    } else {
+                                        contentInput += insertion
+                                    }
+                                },
+                                label = { Text(label, fontSize = 10.sp) },
+                                modifier = Modifier.testTag("format_chip_${label.replace(" ", "_").lowercase()}")
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     OutlinedTextField(
                         value = imageUrlInput,
@@ -6052,6 +6153,37 @@ fun AdminCmsScreen(
                         modifier = Modifier.fillMaxWidth().testTag("cms_form_image"),
                         singleLine = true
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Asset gallery quick selectors
+                    Text(
+                        text = "🖼️ Klinik-Bildvorlagen schnell wählen:",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    androidx.compose.foundation.lazy.LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val presets = listOf(
+                            Triple("Atemberuhigung", "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=400", "Atem"),
+                            Triple("Therapieraum", "https://images.unsplash.com/photo-1516549655169-df83a0774514?q=80&w=400", "Raum"),
+                            Triple("Team Reflexion", "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?q=80&w=400", "Reflexion"),
+                            Triple("Meditation-Zen", "https://images.unsplash.com/photo-1506126613408-eca07ce68773?q=80&w=400", "Zen"),
+                            Triple("Natur-Resonanz", "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?q=80&w=400", "Natur")
+                        )
+                        items(presets) { (title, url, tagKey) ->
+                            val isSelected = imageUrlInput == url
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { imageUrlInput = url },
+                                label = { Text(title, fontSize = 10.sp) },
+                                modifier = Modifier.testTag("preset_image_chip_$tagKey")
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(12.dp))
 
                     // Phase association selector
@@ -6114,6 +6246,41 @@ fun AdminCmsScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // 👁️ ECHTZEIT-VORSCHAU BEREICH (Interactive Live Simulator)
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = "👁️ LIVE DESIGN-VORSCHAU (ECHTZEIT SIMULATION):",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            val previewSection = CmsSection(
+                                id = -999, // placeholder for live preview
+                                title = if (titleInput.isEmpty()) "Ihr Titel erscheint hier..." else titleInput,
+                                description = if (descInput.isEmpty()) "Hier erscheint eine kurze Teaser-Beschreibung" else descInput,
+                                contentText = if (contentInput.isEmpty()) "Geben Sie ausführlichen Fließtext ein, um das Infoblatt vollständig zu simulieren..." else contentInput,
+                                imageUrl = imageUrlInput,
+                                accentColorHex = chosenColorHex,
+                                phaseId = chosenPhaseId
+                            )
+                            CmsSectionCard(
+                                section = previewSection,
+                                isAdminView = false
+                            )
                         }
                     }
 
@@ -6199,16 +6366,18 @@ fun AdminCmsScreen(
                     section = section,
                     isAdminView = true,
                     onEdit = {
-                        editingId = section.id
-                        titleInput = section.title
-                        descInput = section.description
-                        contentInput = section.contentText
-                        imageUrlInput = section.imageUrl
-                        chosenColorHex = section.accentColorHex
-                        chosenPhaseId = section.phaseId
+                        val cardId = try { section.id } catch(e: Exception) { 0 }
+                        editingId = cardId
+                        titleInput = (section.title as? String) ?: ""
+                        descInput = (section.description as? String) ?: ""
+                        contentInput = (section.contentText as? String) ?: ""
+                        imageUrlInput = (section.imageUrl as? String) ?: ""
+                        chosenColorHex = (section.accentColorHex as? String) ?: "#1D4ED8"
+                        chosenPhaseId = (section.phaseId as? String) ?: "ALL"
                     },
                     onDelete = {
-                        onDeleteSection(section.id)
+                        val cardId = try { section.id } catch(e: Exception) { 0 }
+                        onDeleteSection(cardId)
                     }
                 )
             }
